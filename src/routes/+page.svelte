@@ -2,31 +2,34 @@
   import { invoke } from "@tauri-apps/api/core";
   import { onMount } from "svelte";
   import CodeEditor from "$lib/CodeEditor.svelte";
+  import Theory from "$lib/Theory.svelte";
   import { runScheme } from "$lib/scheme-runner";
-
-  interface NavItem {
-    title: string;
-    note?: string;
-  }
-
-  const lessons: NavItem[] = [
-    { title: "Урок 1 · hello world" },
-    { title: "Урок 2 · выражения" },
-  ];
-
-  const tracks: NavItem[] = [
-    { title: "Сеть" },
-    { title: "Интерпретатор" },
-    { title: "Многозадачность" },
-  ];
+  import { lessons, lessonById, trackTitles } from "$lib/lessons";
 
   let version = $state("—");
-  let code = $state(`; первый урок скоро будет здесь
-(display "hello, scheme!")
-(newline)
-`);
+
+  const firstLesson = lessons[0];
+  let selectedId = $state(firstLesson.id);
+  let code = $state(firstLesson.starter);
   let isRunning = $state(false);
   let output = $state("");
+
+  const selectedLesson = $derived(lessonById.get(selectedId) ?? firstLesson);
+
+  const groups = $derived.by(() => {
+    const byTrack = new Map<string, typeof lessons>();
+    for (const lesson of lessons) {
+      const group = byTrack.get(lesson.track) ?? [];
+      group.push(lesson);
+      byTrack.set(lesson.track, group);
+    }
+    return [...byTrack.entries()];
+  });
+
+  function selectLesson(lesson: (typeof lessons)[number]) {
+    selectedId = lesson.id;
+    code = lesson.starter;
+  }
 
   onMount(async () => {
     try {
@@ -64,24 +67,28 @@
 
 <div class="app-body">
   <aside class="sidebar">
-    <p class="sidebar-heading">База</p>
-    <ul class="nav-list">
-      {#each lessons as lesson (lesson.title)}
-        <li class="nav-item">{lesson.title}</li>
-      {/each}
-    </ul>
-    <p class="sidebar-heading">Треки</p>
-    <ul class="nav-list">
-      {#each tracks as track (track.title)}
-        <li class="nav-item">{track.title}</li>
-      {/each}
-    </ul>
+    {#each groups as [track, trackLessons] (track)}
+      <p class="sidebar-heading">{trackTitles[track] ?? track}</p>
+      <ul class="nav-list">
+        {#each trackLessons as lesson (lesson.id)}
+          <li class="nav-item {lesson.id === selectedId ? "active" : ""}">
+            <button
+              class="nav-button"
+              type="button"
+              onclick={() => selectLesson(lesson)}
+            >
+              {lesson.title}
+            </button>
+          </li>
+        {/each}
+      </ul>
+    {/each}
   </aside>
 
   <main class="workbench">
     <section class="lesson-pane">
-      <h2>Hello, Scheme!</h2>
-      <p>Каркас приложения стоит. Текст уроков появится здесь в следующем шаге.</p>
+      <h2>{selectedLesson.title}</h2>
+      <Theory markdown={selectedLesson.theory} />
     </section>
 
     <section class="editor-pane">
@@ -209,15 +216,33 @@
     padding: 0;
     display: flex;
     flex-direction: column;
-    gap: 4px;
+gap: 4px;
   }
 
   .nav-item {
-    padding: 6px 8px;
+    padding: 0;
     border-radius: 6px;
   }
 
-  .nav-item:hover {
+  .nav-item.active {
+    outline: 1px solid var(--border);
+    background: var(--nav-hover);
+  }
+
+  .nav-button {
+    display: block;
+    width: 100%;
+    padding: 6px 8px;
+    border: none;
+    border-radius: 6px;
+    background: none;
+    color: inherit;
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
+  }
+
+  .nav-button:hover {
     background: var(--nav-hover);
   }
 
