@@ -4,12 +4,37 @@ import { sveltekit } from "@sveltejs/kit/vite";
 import process from "node:process";
 const host = process.env.TAURI_DEV_HOST;
 
-// https://vite.dev/config/
-export default defineConfig(() => ({
-  plugins: [sveltekit()],
+const headers = {
+  "Cross-Origin-Opener-Policy": "same-origin",
+  "Cross-Origin-Embedder-Policy": "credentialless",
+};
 
-  // Vite options tailored for Tauri development and only applied in `tauri dev` or `tauri build`
-  //
+// COOP/COEP enable SharedArrayBuffer (required by chez-scheme-js WASM).
+// Vite only applies `server.headers` to static-file responses, so set them on
+// every response via a middleware so SvelteKit-served HTML gets them too.
+function crossOriginIsolation() {
+  /** @param {import("vite").ViteDevServer} server */
+  const apply = (server) => {
+    /** @type {import("vite").Connect.NextHandleFunction} */
+    const middleware = (req, res, next) => {
+      for (const [name, value] of Object.entries(headers)) {
+        res.setHeader(name, value);
+      }
+      next();
+    };
+    server.middlewares.use(middleware);
+  };
+  return {
+    name: "cross-origin-isolation",
+    configureServer: apply,
+    configurePreviewServer: apply,
+  };
+}
+
+// https://vite.dev/config/
+export default defineConfig({
+  plugins: [sveltekit(), crossOriginIsolation()],
+
   // 1. prevent Vite from obscuring rust errors
   clearScreen: false,
   // 2. tauri expects a fixed port, fail if that port is not available
@@ -29,4 +54,4 @@ export default defineConfig(() => ({
       ignored: ["**/src-tauri/**"],
     },
   },
-}));
+});

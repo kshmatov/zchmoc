@@ -1,6 +1,8 @@
 <script lang="ts">
   import { invoke } from "@tauri-apps/api/core";
   import { onMount } from "svelte";
+  import CodeEditor from "$lib/CodeEditor.svelte";
+  import { runScheme } from "$lib/scheme-runner";
 
   interface NavItem {
     title: string;
@@ -19,11 +21,12 @@
   ];
 
   let version = $state("—");
-
-  const starterCode = `; первый урок скоро будет здесь
+  let code = $state(`; первый урок скоро будет здесь
 (display "hello, scheme!")
 (newline)
-`;
+`);
+  let isRunning = $state(false);
+  let output = $state("");
 
   onMount(async () => {
     try {
@@ -32,6 +35,25 @@
       version = "—";
     }
   });
+
+  async function handleRun() {
+    isRunning = true;
+    output = "";
+    try {
+      if (code.trim() === "") {
+        output = "Код пуст. Введите Scheme-программу в редакторе, затем нажмите «Запустить».";
+        return;
+      }
+      const result = await runScheme(code);
+      output = [result.output, result.error && `Ошибка:\n${result.error}`]
+        .filter(Boolean)
+        .join("\n\n");
+    } catch (err) {
+      output = err instanceof Error ? err.message : String(err);
+    } finally {
+      isRunning = false;
+    }
+  }
 </script>
 
 <header class="app-header">
@@ -64,14 +86,22 @@
 
     <section class="editor-pane">
       <div class="pane-toolbar">
-        <button class="btn" disabled>Запустить</button>
+        <button class="btn" onclick={handleRun} disabled={isRunning}>
+          {isRunning ? "Выполняется…" : "Запустить"}
+        </button>
         <button class="btn" disabled>Проверить</button>
       </div>
-      <pre class="editor">{starterCode}</pre>
+      <div class="editor-container">
+        <CodeEditor bind:code />
+      </div>
     </section>
 
     <section class="output-pane">
-      <p class="pane-placeholder">Вывод исполнителя кода появится здесь.</p>
+      {#if output}
+        <pre class="output">{output}</pre>
+      {:else}
+        <p class="pane-placeholder">Вывод исполнителя кода появится здесь.</p>
+      {/if}
     </section>
   </main>
 </div>
@@ -237,16 +267,28 @@
     cursor: not-allowed;
   }
 
-  .editor {
-    margin: 0;
-    padding: 12px;
+  .editor-pane {
+    display: flex;
+    flex-direction: column;
+  }
+
+  .editor-container {
+    flex: 1;
+    min-height: 0;
     border-radius: 6px;
-    background: var(--editor-bg);
-    color: var(--editor-fg);
+    overflow: hidden;
+  }
+
+  .output {
+    margin: 0;
+    padding: 10px;
+    border-radius: 6px;
+    background: #0d1117;
+    color: #c9d1d9;
     font-family: "JetBrains Mono", "Cascadia Code", Consolas, monospace;
-    font-size: 0.9rem;
+    font-size: 0.85rem;
     line-height: 1.5;
-    overflow: auto;
+    white-space: pre-wrap;
   }
 
   .pane-placeholder {
