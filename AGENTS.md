@@ -25,7 +25,7 @@ GUI должен продоставлять возможность писать 
 
 ### Issue tracker
 
-Issues and specs live as GitHub issues (repo `kshmatov/zchemer`), managed via `gh` CLI. See `docs/agents/issue-tracker.md`.
+Issues and specs live as GitHub issues (repo `kshmatov/zchmoc`), managed via `gh` CLI. See `docs/agents/issue-tracker.md`.
 
 ### Triage labels
 
