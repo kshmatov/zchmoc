@@ -2,9 +2,20 @@
 *.out
 
 .vscode/*
+!/.vscode/extensions.json
 
 bin/*
 
 .claude/*
 .agents/*
 .opencode/*
+
+# Node / Vite / Svelte
+node_modules/
+build/
+.svelte-kit/
+*.local
+
+# Rust / Tauri
+src-tauri/target/
+src-tauri/gen/schemas/

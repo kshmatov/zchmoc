@@ -19,4 +19,18 @@ GUI должен продоставлять возможность писать 
 
 Проект должен включать в себя интерпретатор языка для проверки кода игрока.
 
-Внешний вид стилиховать под интерфесй StarTreck Voyager/New Generation
+Общение, документация и спеки на русском языке.
+
+## Agent skills
+
+### Issue tracker
+
+Issues and specs live as GitHub issues (repo `kshmatov/zchemer`), managed via `gh` CLI. See `docs/agents/issue-tracker.md`.
+
+### Triage labels
+
+Five canonical labels: `needs-triage`, `needs-info`, `ready-for-agent`, `ready-for-human`, `wontfix`. See `docs/agents/triage-labels.md`.
+
+### Domain docs
+
+Single-context layout: `CONTEXT.md` + `docs/adr/` at the repo root. See `docs/agents/domain.md`.
