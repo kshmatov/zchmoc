@@ -49,6 +49,18 @@ describe("lessonsOfTrack", () => {
     const baseLessons = lessonsOfTrack("base");
     const ids = baseLessons.map((l) => l.id);
     expect(ids).toEqual(["hello-world"]);
+
+    const interpreterLessons = lessonsOfTrack("interpreter");
+    const interpreterIds = interpreterLessons.map((l) => l.id);
+    expect(interpreterIds).toEqual([
+      "interp-atoms",
+      "interp-env",
+      "interp-lists",
+      "interp-if",
+      "interp-call",
+      "interp-lambda",
+      "interp-define",
+    ]);
   });
 
   it("не смешивает уроки разных треков", () => {
@@ -59,7 +71,8 @@ describe("lessonsOfTrack", () => {
     }
   });
 
-  it("возвращает пустой список для трека без уроков", () => {
-    expect(lessonsOfTrack("interpreter")).toEqual([]);
+  it("возвращает пустой список для трека без уроков (сеть и многозадачность ещё пусты)", () => {
+    expect(lessonsOfTrack("network")).toEqual([]);
+    expect(lessonsOfTrack("concurrency")).toEqual([]);
   });
 });
