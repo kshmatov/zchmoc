@@ -6,6 +6,14 @@ export interface SchemeResult {
   error: string;
 }
 
+export interface RunOptions {
+  /**
+   * Обрамляет программу в `(let () …)`, чтобы определения не копились в
+   * REPL-окружении между запусками (иначе повторное `define` падает).
+   */
+  isolate?: boolean;
+}
+
 const RUN_TIMEOUT_MS = 10000;
 
 let scheme: Scheme | null = null;
@@ -25,12 +33,13 @@ async function ensureScheme(): Promise<Scheme> {
   return scheme;
 }
 
-export async function runScheme(source: string): Promise<SchemeResult> {
+export async function runScheme(source: string, options: RunOptions = {}): Promise<SchemeResult> {
   const s = await ensureScheme();
   stderrBuffer = "";
   try {
+    const program = options.isolate ? `(let () ${source}\n(void))` : source;
     const results = await withTimeout(
-      s.runExpression(source),
+      s.runExpression(program),
       RUN_TIMEOUT_MS,
       "Программа не завершилась за 10 секунд (возможно, незакрытая скобка или бесконечный цикл)."
     );
