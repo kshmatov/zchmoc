@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { tracks, lessonsOfTrack } from "./tracks";
+import { tracks, lessonsOfTrack, runtimeFor } from "./tracks";
 
 describe("tracks", () => {
   it("содержит базу и три стартовых трека в правильном порядке", () => {
@@ -26,6 +26,21 @@ describe("tracks", () => {
       expect(t.title.length).toBeGreaterThan(0);
       expect(t.description.length).toBeGreaterThan(0);
     }
+  });
+
+  it("помечает только системные треки как требующие sidecar", () => {
+    const byId = new Map(tracks.map((t) => [t.id, t]));
+    expect(byId.get("base")?.systemAccess).toBe(false);
+    expect(byId.get("interpreter")?.systemAccess).toBe(false);
+    expect(byId.get("network")?.systemAccess).toBe(true);
+    expect(byId.get("concurrency")?.systemAccess).toBe(true);
+  });
+
+  it("выбирает WASM для базы и интерпретатора, sidecar для сети и многозадачности", () => {
+    expect(runtimeFor("base")).toBe("wasm");
+    expect(runtimeFor("interpreter")).toBe("wasm");
+    expect(runtimeFor("network")).toBe("sidecar");
+    expect(runtimeFor("concurrency")).toBe("sidecar");
   });
 });
 

@@ -40,6 +40,8 @@
     selectedTrackId ? (trackById.get(selectedTrackId) ?? null) : null
   );
 
+  const backend = $derived(currentTrack?.systemAccess ? "sidecar" : "wasm");
+
   const currentTrackLessons = $derived(
     currentTrack ? lessonsOfTrack(currentTrack.id) : []
   );
@@ -135,7 +137,10 @@
         output = "Код пуст. Введите Scheme-программу в редакторе, затем нажмите «Запустить».";
         return;
       }
-      const result = await runScheme(code, { isolate: true });
+      const result = await runScheme(code, {
+        isolate: backend === "wasm",
+        backend,
+      });
       output = [result.output, result.error && `Ошибка:\n${result.error}`]
         .filter(Boolean)
         .join("\n\n");
@@ -149,7 +154,13 @@
         output = "Код пуст. Введите Scheme-программу в редакторе, затем нажмите «Проверить».";
         return;
       }
-      const result = await runScheme(buildTestProgram(code, selectedLesson.tests), { isolate: false });
+      const result = await runScheme(
+        buildTestProgram(code, selectedLesson.tests),
+        {
+          isolate: false,
+          backend,
+        }
+      );
       const report = parseTestReport(result.output);
       if (!report) {
         output =

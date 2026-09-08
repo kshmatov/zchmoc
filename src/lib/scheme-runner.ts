@@ -1,5 +1,7 @@
 import Scheme from "chez-scheme-js";
 import workerUrl from "./chez-worker?worker&url";
+import { invoke } from "@tauri-apps/api/core";
+import type { SchemeRuntime } from "./tracks";
 
 export interface SchemeResult {
   output: string;
@@ -10,8 +12,14 @@ export interface RunOptions {
   /**
    * Обрамляет программу в `(let () …)`, чтобы определения не копились в
    * REPL-окружении между запусками (иначе повторное `define` падает).
+   * Не влияет на sidecar: там каждый запуск — свежий процесс.
    */
   isolate?: boolean;
+  /**
+   * WASM — песочница браузера (база, интерпретатор); sidecar — системный Chez
+   * для треков с доступом к сети и процессам.
+   */
+  backend?: SchemeRuntime;
 }
 
 const RUN_TIMEOUT_MS = 10000;
@@ -33,7 +41,17 @@ async function ensureScheme(): Promise<Scheme> {
   return scheme;
 }
 
-export async function runScheme(source: string, options: RunOptions = {}): Promise<SchemeResult> {
+async function runSidecar(source: string): Promise<SchemeResult> {
+  return invoke<SchemeResult>("run_chez_sidecar", { source });
+}
+
+export async function runScheme(
+  source: string,
+  options: RunOptions = {}
+): Promise<SchemeResult> {
+  if (options.backend === "sidecar") {
+    return runSidecar(source);
+  }
   const s = await ensureScheme();
   stderrBuffer = "";
   try {

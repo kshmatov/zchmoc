@@ -34,6 +34,16 @@ npm run check      # типчекинг Svelte/TS
 cargo check        # проверка Rust-части (в src-tauri)
 ```
 
+## Sidecar Chez (треки с системным доступом)
+
+Треки «Сеть» и «Многозадачность» выполняют код системным Chez Scheme (sidecar), а не WASM-песочницей базы. Бинарник ищется в таком порядке:
+
+1. переменная окружения `ZCHEMER_CHEZ` (путь к `scheme.exe`);
+2. известные пути установки, например `C:\Program Files (x86)\Chez Scheme 10.4.1\bin\i3nt\scheme.exe`;
+3. `scheme`, `scheme.exe`, `chezscheme` в `PATH`.
+
+Если бинарник не найден, приложение показывает понятную ошибку. Версия 10.4.1 (Windows x86) проверена.
+
 ## Структура
 
 - `src/` — фронтенд (SvelteKit, статичная адаптация для Tauri)
