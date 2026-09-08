@@ -20,6 +20,14 @@ import { recommendedTrackOrder } from "$lib/recommendation";
     drafts,
   } from "$lib/progress.svelte";
   import { exportProgress, importProgress } from "$lib/progress-io";
+import { open } from "@tauri-apps/plugin-dialog";
+import {
+  ensureTrackProject,
+  readTrackLessonCode,
+  writeTrackLessonCode,
+  openExternalEditor,
+  loadTrackProjectFiles,
+} from "$lib/track-project";
 
   let version = $state("—");
 
@@ -73,28 +81,93 @@ import { recommendedTrackOrder } from "$lib/recommendation";
     new Map(recommendedOrder.map((track, index) => [track.id, index]))
   );
 
-  function selectLesson(lesson: (typeof lessons)[number]) {
+  async function selectLesson(lesson: (typeof lessons)[number]) {
     selectedId = lesson.id;
-    code = isLessonDone(lesson.id)
+    let source = isLessonDone(lesson.id)
       ? lesson.starter
       : (getDraft(lesson.id) ?? lesson.starter);
+    // Внешние правки из Проекта трека имеют приоритет над черновиком.
+    if (selectedTrackId) {
+      try {
+        const fileCode = await readTrackLessonCode(selectedTrackId, lesson.id);
+        if (fileCode !== null && fileCode.trim() !== lesson.starter.trim()) {
+          source = fileCode;
+        }
+      } catch {
+        // Файл проекта недоступен — остаёмся на черновике.
+      }
+    }
+    code = source;
   }
 
-  function openTrack(trackId: string) {
+  async function openTrack(trackId: string) {
     selectedTrackId = trackId;
+    try {
+      await ensureTrackProject(
+        trackId,
+        lessonsOfTrack(trackId).map((l) => ({ id: l.id, starter: l.starter }))
+      );
+    } catch (err) {
+      notice = err instanceof Error ? err.message : String(err);
+    }
     const trackLessons = lessonsOfTrack(trackId);
     const target = trackLessons.find((l) => !isLessonDone(l.id)) ?? trackLessons[0];
     if (target) {
-      selectLesson(target);
+      await selectLesson(target);
     } else {
       selectedId = null;
       code = "";
     }
   }
 
-  function backToTracks() {
+  async function backToTracks() {
+    if (selectedTrackId && selectedLesson) {
+      try {
+        await writeTrackLessonCode(selectedTrackId, selectedLesson.id, code);
+      } catch (err) {
+        notice = err instanceof Error ? err.message : String(err);
+      }
+    }
     selectedTrackId = null;
     selectedId = null;
+  }
+
+  async function handleOpenExternalEditor() {
+    if (!currentTrack) return;
+    try {
+      await ensureTrackProject(
+        currentTrack.id,
+        lessonsOfTrack(currentTrack.id).map((l) => ({ id: l.id, starter: l.starter }))
+      );
+      await openExternalEditor(currentTrack.id);
+    } catch (err) {
+      notice = err instanceof Error ? err.message : String(err);
+    }
+  }
+
+  async function handleLoadProject() {
+    if (!currentTrack) return;
+    const path = await open({
+      title: "Загрузить Проект трека",
+      directory: true,
+      multiple: false,
+    });
+    if (path === null) return;
+    const dirPath = typeof path === "string" ? path : path[0];
+    if (!dirPath) return;
+    try {
+      const loaded = await loadTrackProjectFiles(dirPath);
+      const lessonMap = new Map(lessonsOfTrack(currentTrack.id).map((l) => [l.id, l]));
+      for (const file of loaded) {
+        const lesson = lessonMap.get(file.id);
+        if (!lesson) continue;
+        saveDraft(file.id, file.code);
+        if (file.id === selectedId) code = file.code;
+      }
+      notice = `Проект загружен: ${loaded.length} файл(ов) применено.`;
+    } catch (err) {
+      notice = err instanceof Error ? err.message : String(err);
+    }
   }
 
   async function handleExport() {
@@ -150,6 +223,13 @@ import { recommendedTrackOrder } from "$lib/recommendation";
         isolate: backend === "wasm",
         backend,
       });
+      if (currentTrack && selectedLesson) {
+        try {
+          await writeTrackLessonCode(currentTrack.id, selectedLesson.id, code);
+        } catch {
+          // Проект трека — дополнительная опция; сбой записи не блокирует запуск.
+        }
+      }
       output = [result.output, result.error && `Ошибка:\n${result.error}`]
         .filter(Boolean)
         .join("\n\n");
@@ -256,6 +336,16 @@ import { recommendedTrackOrder } from "$lib/recommendation";
         <button class="btn btn-ghost" type="button" onclick={handleExport}>Экспорт</button>
         <button class="btn btn-ghost" type="button" onclick={handleImport}>Импорт</button>
       </div>
+      {#if currentTrack && currentTrack.starter}
+        <div class="sidebar-actions">
+          <button class="btn btn-ghost" type="button" onclick={handleOpenExternalEditor} title="Открыть Проект трека во внешнем редакторе">
+            Открыть проект
+          </button>
+          <button class="btn btn-ghost" type="button" onclick={handleLoadProject} title="Загрузить готовый Проект трека из папки">
+            Загрузить проект…
+          </button>
+        </div>
+      {/if}
       <p class="sidebar-heading">{currentTrack.title}</p>
       <button class="btn btn-back" type="button" onclick={backToTracks}>← К выбору треков</button>
       {#if currentTrackLessons.length === 0}

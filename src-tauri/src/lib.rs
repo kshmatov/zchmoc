@@ -1,7 +1,9 @@
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 use std::process::Stdio;
 use std::time::Duration;
+use tauri::Manager;
+use tauri_plugin_opener::OpenerExt;
 use tokio::process::Command as TokioCommand;
 use tokio::time::timeout;
 
@@ -104,6 +106,133 @@ async fn run_chez_sidecar(source: String) -> Result<SidecarResult, String> {
     result
 }
 
+#[derive(Deserialize)]
+struct ProjectLesson {
+    id: String,
+    starter: String,
+}
+
+#[derive(Serialize)]
+struct LoadedProjectLesson {
+    id: String,
+    code: String,
+}
+
+/// Путь к каталогу проекта трека: appData/projects/<track>.
+fn project_dir(app: &tauri::AppHandle, track_id: &str) -> Result<PathBuf, String> {
+    let base = app
+        .path()
+        .app_data_dir()
+        .map_err(|err| format!("Не удалось определить каталог данных приложения: {err}"))?;
+    Ok(base.join("projects").join(track_id))
+}
+
+/// Безопасное имя файла урока: <lessonId>.sps.
+fn lesson_file_path(dir: &Path, lesson_id: &str) -> PathBuf {
+    dir.join(format!("{lesson_id}.sps"))
+}
+
+/// Читает все *.sps файлы каталога, возвращает (lessonId, содержимое).
+fn collect_sps_files(dir: &Path) -> Result<Vec<(String, String)>, String> {
+    let mut out = Vec::new();
+    if !dir.is_dir() {
+        return Ok(out);
+    }
+    let entries = std::fs::read_dir(dir)
+        .map_err(|err| format!("Не удалось прочитать каталог проекта: {err}"))?;
+    for entry in entries {
+        let entry = entry.map_err(|err| format!("Не удалось прочитать каталог проекта: {err}"))?;
+        let path = entry.path();
+        if path.extension().and_then(|e| e.to_str()) != Some("sps") {
+            continue;
+        }
+        let id = path
+            .file_stem()
+            .and_then(|s| s.to_str())
+            .unwrap_or_default()
+            .to_string();
+        let code = std::fs::read_to_string(&path)
+            .map_err(|err| format!("Не удалось прочитать {path:?}: {err}"))?;
+        out.push((id, code));
+    }
+    Ok(out)
+}
+
+/// Создаёт рабочую директорию — Проект трека — и записывает стартовый код
+/// уроков в файлы, которых ещё нет на диске. Возвращает путь к проекту.
+#[tauri::command]
+async fn ensure_track_project(
+    app: tauri::AppHandle,
+    track_id: String,
+    lessons: Vec<ProjectLesson>,
+) -> Result<String, String> {
+    let dir = project_dir(&app, &track_id)?;
+    std::fs::create_dir_all(&dir)
+        .map_err(|err| format!("Не удалось создать каталог проекта: {err}"))?;
+    for lesson in lessons {
+        let file = lesson_file_path(&dir, &lesson.id);
+        if !file.exists() {
+            std::fs::write(&file, &lesson.starter)
+                .map_err(|err| format!("Не удалось записать {file:?}: {err}"))?;
+        }
+    }
+    Ok(dir.to_string_lossy().into_owned())
+}
+
+/// Читает код заданного урока из проекта трека (None — файла ещё нет).
+#[tauri::command]
+async fn read_track_lesson(
+    app: tauri::AppHandle,
+    track_id: String,
+    lesson_id: String,
+) -> Result<Option<String>, String> {
+    let dir = project_dir(&app, &track_id)?;
+    let file = lesson_file_path(&dir, &lesson_id);
+    if !file.is_file() {
+        return Ok(None);
+    }
+    let code = std::fs::read_to_string(&file)
+        .map_err(|err| format!("Не удалось прочитать {file:?}: {err}"))?;
+    Ok(Some(code))
+}
+
+/// Записывает код урока в файл Проекта трека.
+#[tauri::command]
+async fn write_track_lesson(
+    app: tauri::AppHandle,
+    track_id: String,
+    lesson_id: String,
+    code: String,
+) -> Result<(), String> {
+    let dir = project_dir(&app, &track_id)?;
+    let file = lesson_file_path(&dir, &lesson_id);
+    std::fs::write(&file, &code).map_err(|err| format!("Не удалось записать {file:?}: {err}"))
+}
+
+/// Открывает Проект трека во внешнем редакторе по умолчанию.
+#[tauri::command]
+async fn open_external_editor(app: tauri::AppHandle, track_id: String) -> Result<(), String> {
+    let dir = project_dir(&app, &track_id)?;
+    if !dir.is_dir() {
+        return Err("Проект трека ещё не создан — сначала откройте трек в приложении.".into());
+    }
+    app.opener()
+        .open_path(dir.to_string_lossy().into_owned(), None::<&str>)
+        .map_err(|err| format!("Не удалось открыть внешний редактор: {err}"))
+}
+
+/// Загружает готовый Проект трека из файловой системы: читает все *.sps
+/// файлы из выбранного игроком каталога.
+#[tauri::command]
+async fn load_track_project_files(dir_path: String) -> Result<Vec<LoadedProjectLesson>, String> {
+    let dir = PathBuf::from(dir_path);
+    let files = collect_sps_files(&dir)?;
+    Ok(files
+        .into_iter()
+        .map(|(id, code)| LoadedProjectLesson { id, code })
+        .collect())
+}
+
 #[tauri::command]
 fn app_version() -> String {
     env!("CARGO_PKG_VERSION").into()
@@ -116,7 +245,15 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_store::Builder::default().build())
-        .invoke_handler(tauri::generate_handler![app_version, run_chez_sidecar])
+        .invoke_handler(tauri::generate_handler![
+            app_version,
+            run_chez_sidecar,
+            ensure_track_project,
+            read_track_lesson,
+            write_track_lesson,
+            open_external_editor,
+            load_track_project_files
+        ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }
@@ -191,5 +328,33 @@ mod tests {
         let result = run_chez_process(&exe, tmp.path()).await;
         assert!(result.is_err());
         assert!(result.unwrap_err().contains("20 секунд"));
+    }
+
+    #[test]
+    fn lesson_file_path_uses_sps_extension() {
+        let dir = PathBuf::from(r"C:\projects\my-track");
+        assert_eq!(
+            lesson_file_path(&dir, "socket-intro"),
+            PathBuf::from(r"C:\projects\my-track\socket-intro.sps")
+        );
+    }
+
+    #[test]
+    fn collect_sps_files_reads_only_sps() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        std::fs::write(tmp.path().join("a.sps"), "(display \"a\")").expect("write");
+        std::fs::write(tmp.path().join("notes.txt"), "ignored").expect("write");
+        std::fs::write(tmp.path().join("b.sps"), "(display \"b\")").expect("write");
+        let files = collect_sps_files(tmp.path()).expect("collect");
+        let mut ids: Vec<_> = files.iter().map(|(id, _)| id.clone()).collect();
+        ids.sort();
+        assert_eq!(ids, vec!["a".to_string(), "b".to_string()]);
+        assert!(files.iter().any(|(id, code)| id == "b" && code != "ignored"));
+    }
+
+    #[test]
+    fn collect_sps_files_returns_empty_for_missing_dir() {
+        let files = collect_sps_files(Path::new(r"C:\no\such\dir\zchmer")).expect("collect");
+        assert!(files.is_empty());
     }
 }
