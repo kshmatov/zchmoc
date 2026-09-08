@@ -7,6 +7,7 @@
   import { lessons, lessonById } from "$lib/lessons";
   import { tracks, trackById, lessonsOfTrack } from "$lib/tracks";
   import { buildTestProgram, parseTestReport } from "$lib/test-harness";
+import { recommendedTrackOrder } from "$lib/recommendation";
   import {
     markLessonDone,
     isLessonDone,
@@ -63,6 +64,14 @@
   });
 
   const knownLessonIds = $derived(new Set(lessons.map((l) => l.id)));
+
+  const recommendedOrder = $derived(
+    recommendedTrackOrder([...completedLessons], lessons, tracks)
+  );
+
+  const recPosition = $derived(
+    new Map(recommendedOrder.map((track, index) => [track.id, index]))
+  );
 
   function selectLesson(lesson: (typeof lessons)[number]) {
     selectedId = lesson.id;
@@ -218,7 +227,7 @@
       </div>
       <h1 class="track-picker-title">Выбор трека</h1>
       <p class="track-picker-subtitle">
-        Пройди базу Scheme, затем выбери трек-проект. Стартовые треки можно начинать в любом порядке.
+        Пройди базу Scheme, затем выбери трек-проект. Стартовые треки можно начинать в любом порядке — рекомендация не ограничивает выбор.
       </p>
       <div class="track-grid">
         {#each tracks as track (track.id)}
@@ -227,7 +236,12 @@
             type="button"
             onclick={() => openTrack(track.id)}
           >
-            <span class="track-card-title">{track.title}</span>
+            <span class="track-card-title">
+              {#if recPosition.has(track.id)}
+                <span class="track-rec-badge">{recPosition.get(track.id)! + 1}</span>
+              {/if}
+              {track.title}
+            </span>
             <span class="track-card-desc">{track.description}</span>
             {#if lessonsOfTrack(track.id).length === 0}
               <span class="track-card-badge">уроки скоро</span>
@@ -497,6 +511,23 @@ font-size: 0.9rem;
     font-size: 1.1rem;
     font-weight: 700;
     color: var(--title-fg);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .track-rec-badge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 22px;
+    height: 22px;
+    padding: 0 6px;
+    border-radius: 999px;
+    font-size: 0.75rem;
+    font-weight: 700;
+    color: var(--surface);
+    background: var(--title-fg);
   }
 
   .track-card-desc {
