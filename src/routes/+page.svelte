@@ -4,7 +4,8 @@
   import CodeEditor from "$lib/CodeEditor.svelte";
   import Theory from "$lib/Theory.svelte";
   import { runScheme } from "$lib/scheme-runner";
-  import { lessons, lessonById, trackTitles } from "$lib/lessons";
+  import { lessons, lessonById } from "$lib/lessons";
+  import { tracks, trackById, lessonsOfTrack } from "$lib/tracks";
   import { buildTestProgram, parseTestReport } from "$lib/test-harness";
   import {
     markLessonDone,
@@ -22,38 +23,44 @@
   let version = $state("—");
 
   const firstLesson = lessons[0];
-  let selectedId = $state(firstLesson.id);
+
+  /** null — экран выбора трека. */
+  let selectedTrackId = $state<string | null>("base");
+  let selectedId = $state<string | null>(firstLesson.id);
   let code = $state(getDraft(firstLesson.id) ?? firstLesson.starter);
   let actionState = $state({ running: false, checking: false });
   let output = $state("");
   let notice = $state("");
 
-  const selectedLesson = $derived(lessonById.get(selectedId) ?? firstLesson);
+  const selectedLesson = $derived(
+    selectedId ? (lessonById.get(selectedId) ?? firstLesson) : null
+  );
+
+  const currentTrack = $derived(
+    selectedTrackId ? (trackById.get(selectedTrackId) ?? null) : null
+  );
+
+  const currentTrackLessons = $derived(
+    currentTrack ? lessonsOfTrack(currentTrack.id) : []
+  );
 
   // Черновик сохраняется только для реальных правок (код отличается от
   // стартового) и только пока урок не пройден — для пройденного урока
   // чистка черновика не должна обращаться назад (AC T5).
   $effect(() => {
     const lesson = selectedLesson;
-    if (code === lesson.starter) return;
+    if (!lesson || code === lesson.starter) return;
     if (isLessonDone(lesson.id)) return;
     saveDraft(lesson.id, code);
   });
 
   $effect(() => {
     const lesson = selectedLesson;
+    if (!lesson) return;
     if (isLessonDone(lesson.id)) clearDraft(lesson.id);
   });
 
-  const groups = $derived.by(() => {
-    const byTrack = new Map<string, typeof lessons>();
-    for (const lesson of lessons) {
-      const group = byTrack.get(lesson.track) ?? [];
-      group.push(lesson);
-      byTrack.set(lesson.track, group);
-    }
-    return [...byTrack.entries()];
-  });
+  const knownLessonIds = $derived(new Set(lessons.map((l) => l.id)));
 
   function selectLesson(lesson: (typeof lessons)[number]) {
     selectedId = lesson.id;
@@ -62,7 +69,22 @@
       : (getDraft(lesson.id) ?? lesson.starter);
   }
 
-  const knownLessonIds = $derived(new Set(lessons.map((l) => l.id)));
+  function openTrack(trackId: string) {
+    selectedTrackId = trackId;
+    const trackLessons = lessonsOfTrack(trackId);
+    const target = trackLessons.find((l) => !isLessonDone(l.id)) ?? trackLessons[0];
+    if (target) {
+      selectLesson(target);
+    } else {
+      selectedId = null;
+      code = "";
+    }
+  }
+
+  function backToTracks() {
+    selectedTrackId = null;
+    selectedId = null;
+  }
 
   async function handleExport() {
     notice = "";
@@ -86,15 +108,20 @@
     }
     if (result.progress) {
       replaceAllProgress(result.progress.completedLessons, result.progress.drafts);
-      const importedDraft = getDraft(selectedId);
-      if (importedDraft !== undefined) code = importedDraft;
+      if (selectedId) {
+        const importedDraft = getDraft(selectedId);
+        if (importedDraft !== undefined) code = importedDraft;
+      }
       notice = "Прогресс импортирован: статусы и черновики восстановлены.";
     }
   }
 
   onMount(async () => {
     await hydrateProgress();
-    if (getDraft(selectedId) !== undefined) code = getDraft(selectedId)!;
+    if (selectedId) {
+      const draft = getDraft(selectedId);
+      if (draft !== undefined) code = draft;
+    }
     try {
       version = await invoke<string>("app_version");
     } catch {
@@ -117,6 +144,7 @@
 
   async function handleCheck() {
     await runAction("checking", async () => {
+      if (!selectedLesson) return;
       if (code.trim() === "") {
         output = "Код пуст. Введите Scheme-программу в редакторе, затем нажмите «Проверить».";
         return;
@@ -134,6 +162,10 @@
         markLessonDone(selectedLesson.id);
         clearDraft(selectedLesson.id);
         output = `Тесты пройдены (${report.count - report.failedCount} из ${report.count}). Урок «${selectedLesson.title}» пройден.`;
+        if (currentTrack?.id === "base" && currentTrackLessons.every((l) => isLessonDone(l.id))) {
+          backToTracks();
+          notice = "База пройдена! Выберите трек-проект для продолжения.";
+        }
       } else {
         output = `Тесты не пройдены: ${report.failedCount} из ${report.count}\n\n${report.failures.join("\n")}`;
       }
@@ -166,15 +198,46 @@
   {#if notice}
     <div class="notice">{notice}</div>
   {/if}
-  <aside class="sidebar">
-    <div class="sidebar-actions">
-      <button class="btn btn-ghost" type="button" onclick={handleExport}>Экспорт</button>
-      <button class="btn btn-ghost" type="button" onclick={handleImport}>Импорт</button>
+
+  {#if selectedTrackId === null || !currentTrack}
+    <div class="track-picker">
+      <div class="sidebar-actions">
+        <button class="btn btn-ghost" type="button" onclick={handleExport}>Экспорт</button>
+        <button class="btn btn-ghost" type="button" onclick={handleImport}>Импорт</button>
+      </div>
+      <h1 class="track-picker-title">Выбор трека</h1>
+      <p class="track-picker-subtitle">
+        Пройди базу Scheme, затем выбери трек-проект. Стартовые треки можно начинать в любом порядке.
+      </p>
+      <div class="track-grid">
+        {#each tracks as track (track.id)}
+          <button
+            class="track-card"
+            type="button"
+            onclick={() => openTrack(track.id)}
+          >
+            <span class="track-card-title">{track.title}</span>
+            <span class="track-card-desc">{track.description}</span>
+            {#if lessonsOfTrack(track.id).length === 0}
+              <span class="track-card-badge">уроки скоро</span>
+            {/if}
+          </button>
+        {/each}
+      </div>
     </div>
-    {#each groups as [track, trackLessons] (track)}
-      <p class="sidebar-heading">{trackTitles[track] ?? track}</p>
+  {:else}
+    <aside class="sidebar">
+      <div class="sidebar-actions">
+        <button class="btn btn-ghost" type="button" onclick={handleExport}>Экспорт</button>
+        <button class="btn btn-ghost" type="button" onclick={handleImport}>Импорт</button>
+      </div>
+      <p class="sidebar-heading">{currentTrack.title}</p>
+      <button class="btn btn-back" type="button" onclick={backToTracks}>← К выбору треков</button>
+      {#if currentTrackLessons.length === 0}
+        <p class="muted-note">В этом треке пока нет уроков. Загляни позже или выбери другой трек.</p>
+      {/if}
       <ul class="nav-list">
-        {#each trackLessons as lesson (lesson.id)}
+        {#each currentTrackLessons as lesson (lesson.id)}
           <li class="nav-item {lesson.id === selectedId ? "active" : ""}">
             <button
               class="nav-button"
@@ -186,37 +249,43 @@
           </li>
         {/each}
       </ul>
-    {/each}
-  </aside>
+    </aside>
 
-  <main class="workbench">
-    <section class="lesson-pane">
-      <h2>{selectedLesson.title}</h2>
-      <Theory markdown={selectedLesson.theory} />
-    </section>
+    <main class="workbench">
+      {#if selectedLesson}
+        <section class="lesson-pane">
+          <h2>{selectedLesson.title}</h2>
+          <Theory markdown={selectedLesson.theory} />
+        </section>
 
-    <section class="editor-pane">
-      <div class="pane-toolbar">
-        <button class="btn" onclick={handleRun} disabled={actionState.running}>
-          {actionState.running ? "Выполняется…" : "Запустить"}
-        </button>
-        <button class="btn" onclick={handleCheck} disabled={actionState.checking}>
-          {actionState.checking ? "Проверяем…" : "Проверить"}
-        </button>
-      </div>
-      <div class="editor-container">
-        <CodeEditor bind:code />
-      </div>
-    </section>
+        <section class="editor-pane">
+          <div class="pane-toolbar">
+            <button class="btn" onclick={handleRun} disabled={actionState.running}>
+              {actionState.running ? "Выполняется…" : "Запустить"}
+            </button>
+            <button class="btn" onclick={handleCheck} disabled={actionState.checking}>
+              {actionState.checking ? "Проверяем…" : "Проверить"}
+            </button>
+          </div>
+          <div class="editor-container">
+            <CodeEditor bind:code />
+          </div>
+        </section>
 
-    <section class="output-pane">
-      {#if output}
-        <pre class="output">{output}</pre>
+        <section class="output-pane">
+          {#if output}
+            <pre class="output">{output}</pre>
+          {:else}
+            <p class="pane-placeholder">Вывод исполнителя кода появится здесь.</p>
+          {/if}
+        </section>
       {:else}
-        <p class="pane-placeholder">Вывод исполнителя кода появится здесь.</p>
+        <section class="empty-pane">
+          <p class="pane-placeholder">В этом треке пока нет уроков.</p>
+        </section>
       {/if}
-    </section>
-  </main>
+    </main>
+  {/if}
 </div>
 
 <style>
@@ -296,11 +365,11 @@
   .app-body {
     display: flex;
     height: calc(100vh - 53px);
-    background: var(--bg);
+background: var(--bg);
     color: var(--fg);
   }
 
-.sidebar {
+  .sidebar {
     width: 220px;
     flex-shrink: 0;
     padding: 16px;
@@ -338,7 +407,7 @@
     border: 1px solid var(--border);
     background: var(--surface);
     box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
-    font-size: 0.9rem;
+font-size: 0.9rem;
   }
 
   .sidebar-heading {
@@ -347,6 +416,99 @@
     text-transform: uppercase;
     letter-spacing: 0.05em;
     color: var(--muted);
+  }
+
+  .btn-back {
+    width: 100%;
+    margin: 4px 0 12px;
+    color: var(--fg);
+    background: none;
+    border-color: var(--border);
+    padding: 4px 8px;
+    font-size: 0.8rem;
+    text-align: left;
+  }
+
+  .btn-back:hover {
+    background: var(--nav-hover);
+  }
+
+  .muted-note {
+    font-size: 0.85rem;
+    color: var(--muted);
+    line-height: 1.4;
+  }
+
+  .track-picker {
+    flex: 1;
+    padding: 24px 32px;
+    overflow-y: auto;
+  }
+
+  .track-picker-title {
+    margin: 8px 0 4px;
+    font-size: 1.5rem;
+  }
+
+  .track-picker-subtitle {
+    margin: 0 0 20px;
+    color: var(--muted);
+    max-width: 560px;
+  }
+
+  .track-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+    gap: 12px;
+    max-width: 900px;
+  }
+
+  .track-card {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding: 16px;
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    background: var(--surface);
+    color: var(--fg);
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
+    transition: box-shadow 0.12s ease;
+  }
+
+  .track-card:hover {
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.12);
+  }
+
+  .track-card-title {
+    font-size: 1.1rem;
+    font-weight: 700;
+    color: var(--title-fg);
+  }
+
+  .track-card-desc {
+    font-size: 0.9rem;
+    line-height: 1.5;
+    color: var(--muted);
+  }
+
+  .track-card-badge {
+    align-self: flex-start;
+    font-size: 0.75rem;
+    padding: 2px 8px;
+    border-radius: 999px;
+    border: 1px solid var(--border);
+    color: var(--muted);
+  }
+
+  .empty-pane {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border: 1px solid var(--border);
+    border-radius: 8px;
   }
 
   .nav-list {

@@ -11,10 +11,3 @@ export const lessons: Lesson[] = Object.entries(lessonModules)
   .sort((a, b) => a.order - b.order || a.id.localeCompare(b.id, "ru"));
 
 export const lessonById = new Map(lessons.map((lesson) => [lesson.id, lesson]));
-
-export const trackTitles: Record<string, string> = {
-  base: "База",
-  network: "Сеть",
-  interpreter: "Интерпретатор",
-  concurrency: "Многозадачность",
-};
