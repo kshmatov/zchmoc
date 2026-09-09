@@ -71,8 +71,19 @@ describe("lessonsOfTrack", () => {
     }
   });
 
-  it("возвращает пустой список для трека без уроков (сеть и многозадачность ещё пусты)", () => {
+  it("возвращает пустой список для трека без уроков (сеть ещё пуста)", () => {
     expect(lessonsOfTrack("network")).toEqual([]);
-    expect(lessonsOfTrack("concurrency")).toEqual([]);
+  });
+
+  it("содержит уроки многозадачности в порядке order", () => {
+    const ids = lessonsOfTrack("concurrency").map((l) => l.id);
+    expect(ids).toEqual([
+      "conc-threads",
+      "conc-mutex",
+      "conc-condition",
+      "conc-params",
+      "conc-process",
+      "conc-queue",
+    ]);
   });
 });

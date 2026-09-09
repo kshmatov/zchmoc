@@ -25,10 +25,15 @@ fn resolve_scheme_exe() -> Option<PathBuf> {
         }
     }
 
+    // Для треков с системным доступом нужны потоки, поэтому в приоритете
+    // потоковые сборки (ti3nt); непотоковые (i3nt) — как запасной вариант.
     const KNOWN_PATHS: &[&str] = &[
-        // Локальная установка Chez 10.4.1 (x86): bin/i3nt/scheme.exe
+        // Локальная установка Chez 10.4.1 (x86), потоковая сборка
+        r"C:\Program Files (x86)\Chez Scheme 10.4.1\bin\ti3nt\scheme.exe",
+        // Локальная установка Chez 10.4.1 (x86), непотоковая сборка
         r"C:\Program Files (x86)\Chez Scheme 10.4.1\bin\i3nt\scheme.exe",
-        // Стандартные пути установки Chez (x64)
+        // Стандартные пути установки Chez (x64), потоковая и обычная
+        r"C:\Program Files\Chez Scheme\bin\ti3nt\scheme.exe",
         r"C:\Program Files\Chez Scheme\bin\i3nt\scheme.exe",
     ];
     for candidate in KNOWN_PATHS {
@@ -40,8 +45,10 @@ fn resolve_scheme_exe() -> Option<PathBuf> {
 
     // PATH-поиск: scheme, scheme.exe, chezscheme
     if let Some(path_var) = std::env::var_os("PATH") {
-        for dir in std::env::split_paths(&path_var) {
-            for name in ["scheme", "scheme.exe", "chezscheme"] {
+        // Потоковые сборки в PATH обычно называются TH-PLACE/Scheme; пробуем
+        // сначала их, затем обычные имена.
+        for name in ["th-place", "th-place.exe", "scheme", "scheme.exe", "chezscheme"] {
+            for dir in std::env::split_paths(&path_var) {
                 let candidate = dir.join(name);
                 if candidate.is_file() {
                     return Some(candidate);
