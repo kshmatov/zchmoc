@@ -55,6 +55,12 @@ describe("lessonsOfTrack", () => {
       "base-lists",
       "base-conditionals",
       "base-predicates",
+      "base-define",
+      "base-lambda",
+      "base-recursion",
+      "base-higher-order",
+      "base-strings",
+      "base-mutation",
     ]);
 
     const interpreterLessons = lessonsOfTrack("interpreter");
