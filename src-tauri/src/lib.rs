@@ -20,9 +20,22 @@ struct SidecarResult {
     error: String,
 }
 
-/// Поиск стороннего Chez Scheme: сначала переменная окружения ZCHEMER_CHEZ,
-/// затем известные пути установки, затем PATH.
+/// Поиск стороннего Chez Scheme: сначала бандл приложения (каталог ресурсов),
+/// затем переменная окружения ZCHEMER_CHEZ, известные пути установки и PATH.
+#[cfg(test)]
 fn resolve_scheme_exe() -> Option<PathBuf> {
+    resolve_scheme_exe_in(None)
+}
+
+fn resolve_scheme_exe_in(resource_dir: Option<&Path>) -> Option<PathBuf> {
+    // Поставляемый с приложением дистрибутив: resources/chez.
+    if let Some(dir) = resource_dir {
+        let candidate = dir.join("chez").join("bin").join("ti3nt").join("scheme.exe");
+        if candidate.is_file() {
+            return Some(candidate);
+        }
+    }
+
     if let Ok(custom) = std::env::var("ZCHEMER_CHEZ") {
         let path = PathBuf::from(custom);
         if path.is_file() {
@@ -97,8 +110,9 @@ async fn run_chez_process(exe: &Path, script_path: &Path) -> Result<SidecarResul
 }
 
 #[tauri::command]
-async fn run_chez_sidecar(source: String) -> Result<SidecarResult, String> {
-    let exe = resolve_scheme_exe().ok_or_else(|| {
+async fn run_chez_sidecar(app: tauri::AppHandle, source: String) -> Result<SidecarResult, String> {
+    let resource_dir = app.path().resource_dir().ok();
+    let exe = resolve_scheme_exe_in(resource_dir.as_deref()).ok_or_else(|| {
         "Sidecar Chez Scheme не найден. Установите Chez Scheme либо укажите путь в переменной \
          окружения ZCHEMER_CHEZ (например, путь к scheme.exe)."
             .to_string()
