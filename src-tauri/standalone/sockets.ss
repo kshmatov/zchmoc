@@ -87,6 +87,41 @@
    (number->string (bytevector-u8-ref addr 6)) "."
    (number->string (bytevector-u8-ref addr 7))))
 
+; Позиция первого вхождения подстроки sub в строку s (или #f).
+(define (zchm-string-index s sub)
+  (let ((n (string-length s))
+        (m (string-length sub)))
+    (let loop ((i 0))
+      (cond
+        ((= m 0) 0)
+        ((>= i n) #f)
+        ((and (<= (+ i m) n)
+              (string=? (substring s i (+ i m)) sub))
+         i)
+        (else (loop (+ i 1)))))))
+
+; Тело HTTP-ответа: всё, что после первой пустой строки (\r\n\r\n).
+(define (zchm-http-body response)
+  (let ((sep "\r\n\r\n")
+        (n (string-length response)))
+    (let ((i (zchm-string-index response "\r\n\r\n")))
+      (if (and i (< (+ i 4) n))
+          (substring response (+ i 4) n)
+          response))))
+
+; Склеивает список байтвекторов в один (порядок сохраняется).
+(define (zchm-concat-bytes lst)
+  (if (null? lst)
+      #vu8()
+      (let* ((total (apply + (map bytevector-length lst)))
+             (out (make-bytevector total)))
+        (let loop ((i 0) (rest lst))
+          (if (null? rest)
+              out
+              (let ((chunk (car rest)))
+                (bytevector-copy! chunk 0 out i (bytevector-length chunk))
+                (loop (+ i (bytevector-length chunk)) (cdr rest))))))))
+
 (define (zchm-socket-error! who)
   (error who "ошибка сокета" ($zchm-lasterror-raw)))
 

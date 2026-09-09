@@ -79,6 +79,8 @@ describe("lessonsOfTrack", () => {
       "net-udp",
       "net-echo-server",
       "net-http",
+      "net-http-client",
+      "net-udp-chat",
     ]);
   });
 
