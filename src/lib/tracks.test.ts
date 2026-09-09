@@ -48,7 +48,14 @@ describe("lessonsOfTrack", () => {
   it("возвращает уроки трека в порядке order", () => {
     const baseLessons = lessonsOfTrack("base");
     const ids = baseLessons.map((l) => l.id);
-    expect(ids).toEqual(["hello-world"]);
+    expect(ids).toEqual([
+      "hello-world",
+      "base-values",
+      "base-symbols",
+      "base-lists",
+      "base-conditionals",
+      "base-predicates",
+    ]);
 
     const interpreterLessons = lessonsOfTrack("interpreter");
     const interpreterIds = interpreterLessons.map((l) => l.id);
