@@ -9,6 +9,11 @@ use tokio::time::timeout;
 
 const SIDECAR_TIMEOUT_MS: u64 = 20_000;
 
+/// Сокетный runtime sidecar-а: DLL-обёртка над WinSock (stdcall→cdecl).
+const ZCHM_WS_DLL: &[u8] = include_bytes!("../standalone/zchm_ws.dll");
+/// Дружелюбный Scheme-API поверх DLL, грузится перед программой игрока.
+const SOCKETS_RUNTIME: &str = include_str!("../standalone/sockets.ss");
+
 #[derive(Debug, Serialize)]
 struct SidecarResult {
     output: String,
@@ -99,17 +104,22 @@ async fn run_chez_sidecar(source: String) -> Result<SidecarResult, String> {
             .to_string()
     })?;
 
-    let tmp = tempfile::Builder::new()
-        .prefix("zchmer_")
-        .suffix(".sps")
-        .tempfile()
-        .map_err(|err| format!("Не удалось создать временный файл: {err}"))?;
-    let script_path = tmp.path().to_path_buf();
-    std::fs::write(&script_path, &source)
+    // В отдельном каталоге по обеим программам кладём DLL WinSock-обёртки,
+    // чтобы библиотека сокетов могла выгрузиться из памяти честным LoadLibrary.
+    let dir = tempfile::tempdir()
+        .map_err(|err| format!("Не удалось создать временный каталог: {err}"))?;
+    let dll_path = dir.path().join("zchm_ws.dll");
+    std::fs::write(&dll_path, ZCHM_WS_DLL)
+        .map_err(|err| format!("Не удалось записать zchm_ws.dll: {err}"))?;
+
+    let dll_escaped = dll_path.to_string_lossy().replace('\\', "/");
+    let script = format!("(load-shared-object \"{dll_escaped}\")\n{SOCKETS_RUNTIME}\n{source}");
+    let script_path = dir.path().join("program.sps");
+    std::fs::write(&script_path, &script)
         .map_err(|err| format!("Не удалось записать программу во временный файл: {err}"))?;
 
     let result = run_chez_process(&exe, &script_path).await;
-    let _ = tmp.close();
+    let _ = dir.close();
     result
 }
 

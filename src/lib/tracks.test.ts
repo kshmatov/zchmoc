@@ -71,8 +71,15 @@ describe("lessonsOfTrack", () => {
     }
   });
 
-  it("возвращает пустой список для трека без уроков (сеть ещё пуста)", () => {
-    expect(lessonsOfTrack("network")).toEqual([]);
+  it("содержит уроки сетевого трека в порядке order", () => {
+    const ids = lessonsOfTrack("network").map((l) => l.id);
+    expect(ids).toEqual([
+      "net-tcp-server",
+      "net-tcp-client",
+      "net-udp",
+      "net-echo-server",
+      "net-http",
+    ]);
   });
 
   it("содержит уроки многозадачности в порядке order", () => {

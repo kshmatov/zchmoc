@@ -89,6 +89,9 @@ CodeMirror 6 — лёгкий редактор с подсветкой Scheme, �
 **Настоящий Chez**:
 Chez Scheme 10.4.1 установлен локально (`C:\Program Files (x86)\Chez Scheme 10.4.1`) и используется при разработке как исполнитель. Для распространения по-прежнему нужен sidecar, поставляемый с приложением. Для треков с системным доступом sidecar запускает **потоковую** сборку (`bin\ti3nt\scheme.exe`), т.к. только она поддерживает `fork-thread`/`make-mutex`; Резолвер `resolve_scheme_exe` в `src-tauri` перебирает потоковые пути раньше непотоковых (`i3nt`).
 
+**Сокеты (сетевой трек)**:
+Напрямую дёргать WinSock из Chez через `foreign-procedure` нельзя: любые stdcall-вызовы ws2_32 выполяются, но процесс Chez падает при выходе. Поэтому sidecar использует C-прокладку `zchm_ws.dll` (`src-tauri/standalone/zchm_ws.c`, собирается `zig cc -target x86-windows-gnu -shared`), которая принимает **cdecl**-вызовы и оборачивает stdcall-WinSock. DLL вшита в бинарь через `include_bytes!`, кладётся во временный каталог и загружается `(load-shared-object <путь>)` перед программой игрока; дружелюбный Scheme-API (`tcp-listen`, `tcp-connect`, `tcp-accept`, `socket-send`, `socket-receive`, `udp-socket`, `udp-bind!`, `udp-send-to`, `udp-receive-from`, `socket-close!`, `local-port`) — в `src-tauri/standalone/sockets.ss`, вшивается через `include_str!` в `run_chez_sidecar`. По сети разрешён только loopback (`127.0.0.1`); тесты сетевых уроков поднимают сервер во `fork-thread`, а клиент подключается из главного потока; порты — через `tcp-listen`/`udp-bind!` на порту 0 и `local-port`.
+
 ## Формат урока
 
 Файл урока — единый Markdown с frontmatter (YAML) и секциями:
