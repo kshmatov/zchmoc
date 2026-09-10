@@ -108,7 +108,7 @@ function mountExamples() {
   }
 
   .theory :global(code) {
-    background: #eef1f6;
+    background: var(--nav-hover);
     border-radius: 4px;
     padding: 1px 5px;
     font-family: "JetBrains Mono", "Cascadia Code", Consolas, monospace;
@@ -119,7 +119,7 @@ function mountExamples() {
     margin: 0 0 12px;
     padding: 10px;
     border-radius: 6px;
-    background: #eef1f6;
+    background: var(--nav-hover);
     overflow-x: auto;
     font-family: "JetBrains Mono", "Cascadia Code", Consolas, monospace;
     font-size: 0.85rem;

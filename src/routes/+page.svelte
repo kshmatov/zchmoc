@@ -7,13 +7,13 @@
   import { lessons, lessonById } from "$lib/lessons";
   import { tracks, trackById, lessonsOfTrack } from "$lib/tracks";
   import { buildTestProgram, parseTestReport } from "$lib/test-harness";
-import { recommendedTrackOrder } from "$lib/recommendation";
+  import { chooseLessonSource } from "$lib/lesson-source";
+  import { recommendedTrackOrder } from "$lib/recommendation";
   import {
     markLessonDone,
     isLessonDone,
     getDraft,
     saveDraft,
-    clearDraft,
     replaceAllProgress,
     hydrateProgress,
     completedLessons,
@@ -34,8 +34,8 @@ import {
   const firstLesson = lessons[0];
 
   /** null — экран выбора трека. */
-  let selectedTrackId = $state<string | null>("base");
-  let selectedId = $state<string | null>(firstLesson.id);
+  let selectedTrackId = $state<string | null>(null);
+  let selectedId = $state<string | null>(null);
   let code = $state(getDraft(firstLesson.id) ?? firstLesson.starter);
   let actionState = $state({ running: false, checking: false });
   let output = $state("");
@@ -44,6 +44,9 @@ import {
   const selectedLesson = $derived(
     selectedId ? (lessonById.get(selectedId) ?? firstLesson) : null
   );
+
+  /** Урок, код которого сейчас загружен в редактор — источник текущего текста. */
+  let codeLessonId: string | null = null;
 
   const currentTrack = $derived(
     selectedTrackId ? (trackById.get(selectedTrackId) ?? null) : null
@@ -55,20 +58,15 @@ import {
     currentTrack ? lessonsOfTrack(currentTrack.id) : []
   );
 
-  // Черновик сохраняется только для реальных правок (код отличается от
-  // стартового) и только пока урок не пройден — для пройденного урока
-  // чистка черновика не должна обращаться назад (AC T5).
+  // Черновик сохраняется для реальных правок (код отличается от стартового)
+  // и только когда в редакторе код именно этого урока. Иначе при смене урока
+  // эффект может успеть записать старый код под id нового урока (асинхронное
+  // переключение). Решение пройденного урока тоже остаётся сохранённым.
   $effect(() => {
     const lesson = selectedLesson;
     if (!lesson || code === lesson.starter) return;
-    if (isLessonDone(lesson.id)) return;
+    if (codeLessonId !== lesson.id) return;
     saveDraft(lesson.id, code);
-  });
-
-  $effect(() => {
-    const lesson = selectedLesson;
-    if (!lesson) return;
-    if (isLessonDone(lesson.id)) clearDraft(lesson.id);
   });
 
   const knownLessonIds = $derived(new Set(lessons.map((l) => l.id)));
@@ -82,22 +80,37 @@ import {
   );
 
   async function selectLesson(lesson: (typeof lessons)[number]) {
-    selectedId = lesson.id;
-    let source = isLessonDone(lesson.id)
-      ? lesson.starter
-      : (getDraft(lesson.id) ?? lesson.starter);
-    // Внешние правки из Проекта трека имеют приоритет над черновиком.
-    if (selectedTrackId) {
+    // Зеркалим текущий код в файл Проекта трека перед уходом с урока,
+    // чтобы внешние инструменты всегда видели последнюю версию.
+    const outgoing = selectedLesson;
+    if (selectedTrackId && outgoing && codeLessonId === outgoing.id) {
       try {
-        const fileCode = await readTrackLessonCode(selectedTrackId, lesson.id);
-        if (fileCode !== null && fileCode.trim() !== lesson.starter.trim()) {
-          source = fileCode;
-        }
+        await writeTrackLessonCode(selectedTrackId, outgoing.id, code);
       } catch {
-        // Файл проекта недоступен — остаёмся на черновике.
+        // Проект трека — доп. опция; черновик уже сохранён самостоятельно.
       }
     }
-    code = source;
+    selectedId = lesson.id;
+    // Черновик — актуальное содержимое редактора и источник правды.
+    // Файл Проекта используется только как первичное содержимое для урока,
+    // который ещё не редактировали в приложении (внешние правки). Для
+    // явной загрузки готового Проекта есть кнопка «Загрузить Проект трека».
+    const draft = getDraft(lesson.id);
+    let fileCode: string | null = null;
+    if (draft === undefined && selectedTrackId) {
+      try {
+        fileCode = await readTrackLessonCode(selectedTrackId, lesson.id);
+      } catch {
+        // Файл проекта недоступен — остаёмся на стартовом коде.
+      }
+    }
+    code = chooseLessonSource({
+      draft,
+      fileCode,
+      starter: lesson.starter,
+      projectAvailable: selectedTrackId !== null,
+    });
+    codeLessonId = lesson.id;
   }
 
   async function openTrack(trackId: string) {
@@ -162,7 +175,10 @@ import {
         const lesson = lessonMap.get(file.id);
         if (!lesson) continue;
         saveDraft(file.id, file.code);
-        if (file.id === selectedId) code = file.code;
+        if (file.id === selectedId) {
+          code = file.code;
+          codeLessonId = file.id;
+        }
       }
       notice = `Проект загружен: ${loaded.length} файл(ов) применено.`;
     } catch (err) {
@@ -194,7 +210,10 @@ import {
       replaceAllProgress(result.progress.completedLessons, result.progress.drafts);
       if (selectedId) {
         const importedDraft = getDraft(selectedId);
-        if (importedDraft !== undefined) code = importedDraft;
+        if (importedDraft !== undefined) {
+          code = importedDraft;
+          codeLessonId = selectedId;
+        }
       }
       notice = "Прогресс импортирован: статусы и черновики восстановлены.";
     }
@@ -204,7 +223,10 @@ import {
     await hydrateProgress();
     if (selectedId) {
       const draft = getDraft(selectedId);
-      if (draft !== undefined) code = draft;
+      if (draft !== undefined) {
+        code = draft;
+        codeLessonId = selectedId;
+      }
     }
     try {
       version = await invoke<string>("app_version");
@@ -219,10 +241,7 @@ import {
         output = "Код пуст. Введите Scheme-программу в редакторе, затем нажмите «Запустить».";
         return;
       }
-      const result = await runScheme(code, {
-        isolate: backend === "wasm",
-        backend,
-      });
+      const result = await runScheme(code, { backend });
       if (currentTrack && selectedLesson) {
         try {
           await writeTrackLessonCode(currentTrack.id, selectedLesson.id, code);
@@ -245,10 +264,7 @@ import {
       }
       const result = await runScheme(
         buildTestProgram(code, selectedLesson.tests),
-        {
-          isolate: false,
-          backend,
-        }
+        { backend }
       );
       const report = parseTestReport(result.output);
       if (!report) {
@@ -260,7 +276,6 @@ import {
       }
       if (report.passed) {
         markLessonDone(selectedLesson.id);
-        clearDraft(selectedLesson.id);
         output = `Тесты пройдены (${report.count - report.failedCount} из ${report.count}). Урок «${selectedLesson.title}» пройден.`;
         if (currentTrack?.id === "base" && currentTrackLessons.every((l) => isLessonDone(l.id))) {
           backToTracks();
@@ -359,7 +374,10 @@ import {
               type="button"
               onclick={() => selectLesson(lesson)}
             >
-              <span class="nav-done">{isLessonDone(lesson.id) ? "✓ " : ""}</span>{lesson.title}
+              {#if isLessonDone(lesson.id)}
+                <span class="nav-done" aria-label="Урок пройден">✓</span>
+              {/if}
+              {lesson.title}
             </button>
           </li>
         {/each}
@@ -680,8 +698,19 @@ gap: 4px;
   }
 
   .nav-done {
-    color: var(--title-fg);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 18px;
+    height: 18px;
+    margin-right: 6px;
+    border-radius: 50%;
+    background: #2ea043;
+    color: #ffffff;
+    font-size: 0.7rem;
     font-weight: 700;
+    line-height: 1;
+    vertical-align: middle;
   }
 
   .workbench {

@@ -10,12 +10,6 @@ export interface SchemeResult {
 
 export interface RunOptions {
   /**
-   * Обрамляет программу в `(let () …)`, чтобы определения не копились в
-   * REPL-окружении между запусками (иначе повторное `define` падает).
-   * Не влияет на sidecar: там каждый запуск — свежий процесс.
-   */
-  isolate?: boolean;
-  /**
    * WASM — песочница браузера (база, интерпретатор); sidecar — системный Chez
    * для треков с доступом к сети и процессам.
    */
@@ -55,15 +49,27 @@ export async function runScheme(
   const s = await ensureScheme();
   stderrBuffer = "";
   try {
-    const program = options.isolate ? `(let () ${source}\n(void))` : source;
+    // Передаём код в REPL как есть: каждое выражение вычисляется, и его
+    // значение выводится, как в интерактивном Chez. Накопление определений
+    // между запусками допустимо — повторный `define` в REPL переопределяет связь.
     const results = await withTimeout(
-      s.runExpression(program),
+      s.runExpression(source),
       RUN_TIMEOUT_MS,
       "Программа не завершилась за 10 секунд (возможно, незакрытая скобка или бесконечный цикл)."
     );
+    const error = stderrBuffer;
+    // Синтаксическая ошибка или «тихий» сбой могут нарушить состояние REPL
+    // (и следующие запуски станут нечитаемыми) — пересоздаём исполнитель,
+    // чтобы следующая проверка всегда стартовала с чистого листа.
+    const unstable =
+      error.trim() !== "" || (results.length === 0 && error.trim() === "");
+    if (unstable && scheme !== null) {
+      s.destroy();
+      scheme = null;
+    }
     return {
       output: results.join("\n"),
-      error: stderrBuffer,
+      error,
     };
   } catch (err) {
     // A timed-out or crashed REPL must not poison subsequent runs.

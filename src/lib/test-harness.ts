@@ -48,6 +48,18 @@ const PREAMBLE = `
   (display "/")
   (display zchm-checks)
   (newline))
+(define (zchm-except e)
+  (define msg (condition-message e))
+  (define detail
+    (if msg
+        (guard (err (#t #f))
+          (let ((args (condition-irritants e)))
+            (if (pair? args)
+                (apply format #f msg args)
+                msg)))
+        #f))
+  (zchm-bad! "исключение при проверке"
+             (if detail detail (zchm->string e))))
 `;
 
 export interface TestReport {
@@ -58,7 +70,11 @@ export interface TestReport {
 }
 
 export function buildTestProgram(playerCode: string, testsCode: string): string {
-  return `(let () ${PREAMBLE} ${playerCode} ${testsCode} (zchm-finish))`;
+  return `(let () ${PREAMBLE}
+  (guard (e [#t (zchm-except e) (zchm-finish)])
+    ${playerCode}
+    ${testsCode}
+    (zchm-finish)))`;
 }
 
 const RESULT_RE = /__ZCHM__\s+(PASS|FAIL)\s+(\d+)\/(\d+)/;

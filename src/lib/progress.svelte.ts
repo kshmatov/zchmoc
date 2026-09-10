@@ -23,7 +23,9 @@ export function isLessonDone(id: string): boolean {
 }
 
 export function markLessonDone(id: string): void {
-  if (!completedLessons.includes(id)) completedLessons.push(id);
+  if (completedLessons.includes(id)) return;
+  completedLessons.push(id);
+  if (hydrated) void saveCompletedLessons([...completedLessons]);
 }
 
 export function getDraft(id: string): string | undefined {
@@ -32,10 +34,12 @@ export function getDraft(id: string): string | undefined {
 
 export function saveDraft(id: string, code: string): void {
   drafts[id] = code;
+  if (hydrated) void saveDraftsMap({ ...drafts });
 }
 
 export function clearDraft(id: string): void {
   delete drafts[id];
+  if (hydrated) void saveDraftsMap({ ...drafts });
 }
 
 export function replaceAllProgress(
@@ -46,13 +50,8 @@ export function replaceAllProgress(
   for (const id of nextCompleted) completedLessons.push(id);
   for (const key of Object.keys(drafts)) delete drafts[key];
   for (const [id, code] of Object.entries(nextDrafts)) drafts[id] = code;
+  if (hydrated) {
+    void saveCompletedLessons([...completedLessons]);
+    void saveDraftsMap({ ...drafts });
+  }
 }
-
-$effect.root(() => {
-  $effect(() => {
-    if (hydrated) void saveCompletedLessons(completedLessons);
-  });
-  $effect(() => {
-    if (hydrated) void saveDraftsMap(drafts);
-  });
-});
