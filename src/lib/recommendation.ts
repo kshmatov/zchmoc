@@ -53,7 +53,9 @@ export function recommendedTrackOrder(
   const accumulated = accumulatedSkills(completedLessonIds, allLessons);
 
   const base = trackList.find((t) => t.id === "base");
-  const baseLessons = allLessons.filter((l) => l.track === "base");
+  // Лекции не имеют проверки и не помечаются пройденными — для завершения
+  // базы они не нужны.
+  const baseLessons = allLessons.filter((l) => l.track === "base" && !l.lecture);
   // База завершена, когда все её уроки пройдены (пустая база = нечего рекомендовать).
   const baseDone = baseLessons.length > 0 && baseLessons.every((l) => completedLessonIds.includes(l.id));
 

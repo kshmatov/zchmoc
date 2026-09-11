@@ -61,6 +61,7 @@ describe("lessonsOfTrack", () => {
       "base-higher-order",
       "base-strings",
       "base-mutation",
+      "base-modules",
     ]);
 
     const interpreterLessons = lessonsOfTrack("interpreter");

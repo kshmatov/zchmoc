@@ -22,6 +22,7 @@ function lesson(
     theory: "",
     starter: "",
     tests: "",
+    lecture: false,
   };
 }
 
@@ -87,6 +88,18 @@ describe("recommendedTrackOrder", () => {
       "network",
       "concurrency",
     ]);
+  });
+
+  it("лекция не блокирует завершение базы", () => {
+    const lecture = lesson("base-3", "base", 3, ["modules"]);
+    lecture.lecture = true;
+    const list = [
+      lesson("base-1", "base", 1, ["strings"]),
+      lesson("base-2", "base", 2, ["procedures"]),
+      lecture,
+    ];
+    const order = recommendedTrackOrder(["base-1", "base-2"], list, tracks);
+    expect(order[0].id).not.toBe("base");
   });
 
   it("возвращает все треки (не блокирует выбор)", () => {

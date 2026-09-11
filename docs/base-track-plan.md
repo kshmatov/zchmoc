@@ -29,6 +29,7 @@
 | 10 | `base-higher-order` | Процедуры высшего порядка | `higher-order`, `map`, `filter`, `fold` | `map`, `filter`, `fold-left`, `apply`. Композиция маленьких процедур. |
 | 11 | `base-strings` | Строки и символы | `strings`, `characters` | `string-length`, `string-append`, `substring`, `string-ref`, `string->list`/`list->string`, `string->number`/`number->string`, `string-upcase`. Символы: `char?`, `char->integer`, `integer->char`. |
 | 12 | `base-mutation` | Изменяемое состояние | `mutation`, `boxes` | `set!`, ячейки `box`/`unbox`/`set-box!`. Почему нужны с осторожностью; мостик к многозадачности и `set-box!` в тестах треков. |
+| 13 | `base-modules` | Архитектура приложений и модули | `modules`, `architecture` | Лекция без проверки (`lecture: true`, без starter/tests): библиотеки R6RS (`library`/`import`/`export`), функциональное ядро и тонкая оболочка, состояние на краю, связь с треками. Не отмечается пройденным и не блокирует завершение базы. |
 
 ## Связь с треками-проектами
 
@@ -45,4 +46,4 @@
 3. ✅ Расширение `src/lib/tracks.test.ts` под полный список уроков base.
 4. После стабилизации трека — пересборка релизного бандла (уроки попадают во frontend-бандл).
 
-**Статус**: 12 уроков готовы (order 1–12), каждый проверен прогоном тестов в Chez (эталон для WASM).
+**Статус**: 12 рабочих уроков (order 1–12), каждый проверен прогоном тестов в Chez (эталон для WASM), плюс лекция `base-modules` (order 13) без проверки.

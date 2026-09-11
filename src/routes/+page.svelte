@@ -83,7 +83,7 @@ import {
     // Зеркалим текущий код в файл Проекта трека перед уходом с урока,
     // чтобы внешние инструменты всегда видели последнюю версию.
     const outgoing = selectedLesson;
-    if (selectedTrackId && outgoing && codeLessonId === outgoing.id) {
+    if (selectedTrackId && outgoing && !outgoing.lecture && codeLessonId === outgoing.id) {
       try {
         await writeTrackLessonCode(selectedTrackId, outgoing.id, code);
       } catch {
@@ -97,7 +97,7 @@ import {
     // явной загрузки готового Проекта есть кнопка «Загрузить Проект трека».
     const draft = getDraft(lesson.id);
     let fileCode: string | null = null;
-    if (draft === undefined && selectedTrackId) {
+    if (draft === undefined && selectedTrackId && !lesson.lecture) {
       try {
         fileCode = await readTrackLessonCode(selectedTrackId, lesson.id);
       } catch {
@@ -118,7 +118,9 @@ import {
     try {
       await ensureTrackProject(
         trackId,
-        lessonsOfTrack(trackId).map((l) => ({ id: l.id, starter: l.starter }))
+        lessonsOfTrack(trackId)
+          .filter((l) => !l.lecture)
+          .map((l) => ({ id: l.id, starter: l.starter }))
       );
     } catch (err) {
       notice = err instanceof Error ? err.message : String(err);
@@ -134,7 +136,7 @@ import {
   }
 
   async function backToTracks() {
-    if (selectedTrackId && selectedLesson) {
+    if (selectedTrackId && selectedLesson && !selectedLesson.lecture) {
       try {
         await writeTrackLessonCode(selectedTrackId, selectedLesson.id, code);
       } catch (err) {
@@ -150,7 +152,9 @@ import {
     try {
       await ensureTrackProject(
         currentTrack.id,
-        lessonsOfTrack(currentTrack.id).map((l) => ({ id: l.id, starter: l.starter }))
+        lessonsOfTrack(currentTrack.id)
+          .filter((l) => !l.lecture)
+          .map((l) => ({ id: l.id, starter: l.starter }))
       );
       await openExternalEditor(currentTrack.id);
     } catch (err) {
@@ -284,7 +288,10 @@ import {
       if (report.passed) {
         markLessonDone(selectedLesson.id);
         output = `Тесты пройдены (${report.count - report.failedCount} из ${report.count}). Урок «${selectedLesson.title}» пройден.`;
-        if (currentTrack?.id === "base" && currentTrackLessons.every((l) => isLessonDone(l.id))) {
+        if (
+          currentTrack?.id === "base" &&
+          currentTrackLessons.every((l) => l.lecture || isLessonDone(l.id))
+        ) {
           backToTracks();
           notice = "База пройдена! Выберите трек-проект для продолжения.";
         }
@@ -393,32 +400,39 @@ import {
 
     <main class="workbench">
       {#if selectedLesson}
-        <section class="lesson-pane">
-          <h2>{selectedLesson.title}</h2>
-          <Theory markdown={selectedLesson.theory} />
-        </section>
+        {#if selectedLesson.lecture}
+          <section class="lesson-pane lecture-pane">
+            <h2>{selectedLesson.title}</h2>
+            <Theory markdown={selectedLesson.theory} />
+          </section>
+        {:else}
+          <section class="lesson-pane">
+            <h2>{selectedLesson.title}</h2>
+            <Theory markdown={selectedLesson.theory} />
+          </section>
 
-        <section class="editor-pane">
-          <div class="pane-toolbar">
-            <button class="btn" onclick={handleRun} disabled={actionState.running}>
-              {actionState.running ? "Выполняется…" : "Запустить"}
-            </button>
-            <button class="btn" onclick={handleCheck} disabled={actionState.checking}>
-              {actionState.checking ? "Проверяем…" : "Проверить"}
-            </button>
-          </div>
-          <div class="editor-container">
-            <CodeEditor bind:code />
-          </div>
-        </section>
+          <section class="editor-pane">
+            <div class="pane-toolbar">
+              <button class="btn" onclick={handleRun} disabled={actionState.running}>
+                {actionState.running ? "Выполняется…" : "Запустить"}
+              </button>
+              <button class="btn" onclick={handleCheck} disabled={actionState.checking}>
+                {actionState.checking ? "Проверяем…" : "Проверить"}
+              </button>
+            </div>
+            <div class="editor-container">
+              <CodeEditor bind:code />
+            </div>
+          </section>
 
-        <section class="output-pane">
-          {#if output}
-            <pre class="output">{output}</pre>
-          {:else}
-            <p class="pane-placeholder">Вывод исполнителя кода появится здесь.</p>
-          {/if}
-        </section>
+          <section class="output-pane">
+            {#if output}
+              <pre class="output">{output}</pre>
+            {:else}
+              <p class="pane-placeholder">Вывод исполнителя кода появится здесь.</p>
+            {/if}
+          </section>
+        {/if}
       {:else}
         <section class="empty-pane">
           <p class="pane-placeholder">В этом треке пока нет уроков.</p>
@@ -738,9 +752,13 @@ gap: 4px;
     background: var(--surface);
   }
 
-  .lesson-pane h2 {
+.lesson-pane h2 {
     margin: 0 0 8px;
     font-size: 1.1rem;
+  }
+
+  .lecture-pane {
+    grid-row: 1 / -1;
   }
 
   .pane-toolbar {

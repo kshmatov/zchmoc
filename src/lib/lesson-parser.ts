@@ -9,6 +9,8 @@ export interface Lesson {
   theory: string;
   starter: string;
   tests: string;
+  /** Рассказ без проверки: нет starter/tests, не отмечается в прогрессе. */
+  lecture: boolean;
 }
 
 const FRONTMATTER_RE = /^---\r?\n?([\s\S]*?)\r?\n---\r?\n?/;
@@ -52,6 +54,7 @@ export function parseLesson(source: string): Lesson {
     track: data.track,
     order: typeof data.order === "number" ? data.order : 0,
     skills: Array.isArray(data.skills) ? data.skills.map(String) : [],
+    lecture: data?.lecture === true,
     ...splitBody(body),
   };
 }
