@@ -58,11 +58,14 @@ export async function runScheme(
       "Программа не завершилась за 10 секунд (возможно, незакрытая скобка или бесконечный цикл)."
     );
     const error = stderrBuffer;
-    // Синтаксическая ошибка или «тихий» сбой могут нарушить состояние REPL
-    // (и следующие запуски станут нечитаемыми) — пересоздаём исполнитель,
-    // чтобы следующая проверка всегда стартовала с чистого листа.
-    const unstable =
-      error.trim() !== "" || (results.length === 0 && error.trim() === "");
+    // Синтаксическая ошибка или «тихий» сбой (незакрытые скобки, когда REPL
+    // молча проглатывает незавершённое выражение) могут нарушить состояние
+    // REPL — пересоздаём исполнитель, чтобы следующий запуск стартовал
+    // с чистого листа. При этом «выражение выполнено, но вывода нет» (например,
+    // `define` или `string->number`, вернувший #f) REPL не отравляет —
+    // определения сохраняются между запусками.
+    const unbalanced = !isBalancedScheme(source);
+    const unstable = error.trim() !== "" || unbalanced;
     if (unstable && scheme !== null) {
       s.destroy();
       scheme = null;
@@ -93,4 +96,60 @@ function withTimeout<T>(promise: Promise<T>, ms: number, message: string): Promi
       }
     );
   });
+}
+
+/**
+ * Проверяет баланс скобок `() [] {}` в Scheme-коде. Использование одно и то же
+ * для REPL: незакрытое выражение заставляет REPL молча ждать продолжения, а это
+ * ломает последующие запуски. Кавычки, строки, символьные и разные комментарии
+ * скобки не считают.
+ */
+export function isBalancedScheme(source: string): boolean {
+  const stack: string[] = [];
+  let i = 0;
+  while (i < source.length) {
+    const c = source[i];
+    if (c === ";") {
+      i = skipToEndOfLine(source, i);
+    } else if (c === "#" && source[i + 1] === "|") {
+      i = skipBlockComment(source, i);
+    } else if (c === "#" && source[i + 1] === "\\") {
+      i = Math.min(source.length, i + 3);
+    } else if (c === '"') {
+      i = skipStringLiteral(source, i);
+    } else if (c === "(" || c === "[" || c === "{") {
+      stack.push(c);
+      i++;
+    } else if (c === ")" || c === "]" || c === "}") {
+      const open = c === ")" ? "(" : c === "]" ? "[" : "{";
+      if (stack.pop() !== open) {
+        return false;
+      }
+      i++;
+    } else {
+      i++;
+    }
+  }
+  return stack.length === 0;
+}
+
+function skipToEndOfLine(source: string, start: number): number {
+  const nl = source.indexOf("\n", start);
+  return nl === -1 ? source.length : nl + 1;
+}
+
+function skipBlockComment(source: string, start: number): number {
+  const end = source.indexOf("|#", start + 2);
+  return end === -1 ? source.length : end + 2;
+}
+
+function skipStringLiteral(source: string, start: number): number {
+  for (let i = start + 1; i < source.length; i++) {
+    if (source[i] === "\\") {
+      i++;
+    } else if (source[i] === '"') {
+      return i + 1;
+    }
+  }
+  return source.length;
 }

@@ -3,7 +3,7 @@
   import { onMount } from "svelte";
   import CodeEditor from "$lib/CodeEditor.svelte";
   import Theory from "$lib/Theory.svelte";
-  import { runScheme } from "$lib/scheme-runner";
+  import { runScheme, isBalancedScheme } from "$lib/scheme-runner";
   import { lessons, lessonById } from "$lib/lessons";
   import { tracks, trackById, lessonsOfTrack } from "$lib/tracks";
   import { buildTestProgram, parseTestReport } from "$lib/test-harness";
@@ -256,6 +256,15 @@ import {
       output = [result.output, result.error && `Ошибка:\n${result.error}`]
         .filter(Boolean)
         .join("\n\n");
+      if (output === "") {
+        // Молчаливый запуск: код выполнился, но ничего не напечатал
+        // (например, `define` или string->number, вернувший #f). Если же скобки
+        // не сбалансированы, REPL молча проглатывает незавершённое выражение —
+        // это не успех, а «тихий» сбой.
+        output = isBalancedScheme(code)
+          ? "Программа выполнена успешно — вывода нет."
+          : "Код выглядит незавершённым — проверь баланс скобок: где-то не хватает закрывающей.";
+      }
     });
   }
 
