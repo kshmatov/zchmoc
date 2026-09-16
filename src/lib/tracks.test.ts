@@ -2,19 +2,21 @@ import { describe, expect, it } from "vitest";
 import { tracks, lessonsOfTrack, runtimeFor } from "./tracks";
 
 describe("tracks", () => {
-  it("содержит базу и три стартовых трека в правильном порядке", () => {
+  it("содержит базу и треки-проекты в правильном порядке", () => {
     expect(tracks.map((t) => t.id)).toEqual([
       "base",
       "interpreter",
       "network",
       "concurrency",
+      "database",
     ]);
   });
 
-  it("помечает только стартовые треки трека-проектов", () => {
-    const starter = tracks.filter((t) => t.starter);
-    expect(starter.map((t) => t.id).sort()).toEqual([
+  it("помечает треки с Проектом на диске, кроме базы", () => {
+    const withProject = tracks.filter((t) => t.starter);
+    expect(withProject.map((t) => t.id).sort()).toEqual([
       "concurrency",
+      "database",
       "interpreter",
       "network",
     ]);
@@ -34,13 +36,15 @@ describe("tracks", () => {
     expect(byId.get("interpreter")?.systemAccess).toBe(false);
     expect(byId.get("network")?.systemAccess).toBe(true);
     expect(byId.get("concurrency")?.systemAccess).toBe(true);
+    expect(byId.get("database")?.systemAccess).toBe(true);
   });
 
-  it("выбирает WASM для базы и интерпретатора, sidecar для сети и многозадачности", () => {
+  it("выбирает WASM для базы и интерпретатора, sidecar для системных треков", () => {
     expect(runtimeFor("base")).toBe("wasm");
     expect(runtimeFor("interpreter")).toBe("wasm");
     expect(runtimeFor("network")).toBe("sidecar");
     expect(runtimeFor("concurrency")).toBe("sidecar");
+    expect(runtimeFor("database")).toBe("sidecar");
   });
 });
 
@@ -107,6 +111,21 @@ describe("lessonsOfTrack", () => {
       "conc-params",
       "conc-process",
       "conc-queue",
+    ]);
+  });
+
+  it("содержит уроки трека «Базы данных» в порядке order", () => {
+    const ids = lessonsOfTrack("database").map((l) => l.id);
+    expect(ids).toEqual([
+      "db-records",
+      "db-persistence",
+      "db-query",
+      "db-keys",
+      "db-index",
+      "db-join",
+      "db-transactions",
+      "db-sql",
+      "db-engines",
     ]);
   });
 });

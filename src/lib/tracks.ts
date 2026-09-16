@@ -6,7 +6,10 @@ export interface Track {
   title: string;
   description: string;
   order: number;
-  /** Стартовый трек-проект (интерпретатор, сеть, многозадачность). */
+  /**
+   * Трек с Проектом на диске: доступны «Открыть проект» и «Загрузить проект…».
+   * Стартовые треки-проекты — интерпретатор, сеть, многозадачность — и БД.
+   */
   starter: boolean;
   /** Трек требует системных возможностей (сеть, процессы) — исполняется sidecar-Chez, а не WASM. */
   systemAccess: boolean;
@@ -53,6 +56,15 @@ export const tracks: Track[] = [
     description:
       "Параллельное и конкурентное программирование: процессы, потоки, синхронизация.",
     order: 3,
+    starter: true,
+    systemAccess: true,
+  },
+  {
+    id: "database",
+    title: "Базы данных",
+    description:
+      "Построй собственную мини-СУБД на Scheme: таблицы, запросы, ключи, индексы, соединения и транзакции на диске.",
+    order: 4,
     starter: true,
     systemAccess: true,
   },

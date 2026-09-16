@@ -74,6 +74,7 @@ describe("recommendedTrackOrder", () => {
       "network",
       "concurrency",
       "interpreter",
+      "database",
     ]);
   });
 
@@ -87,6 +88,7 @@ describe("recommendedTrackOrder", () => {
       "interpreter",
       "network",
       "concurrency",
+      "database",
     ]);
   });
 

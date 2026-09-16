@@ -78,10 +78,18 @@ fn resolve_scheme_exe_in(resource_dir: Option<&Path>) -> Option<PathBuf> {
     None
 }
 
-async fn run_chez_process(exe: &Path, script_path: &Path) -> Result<SidecarResult, String> {
+async fn run_chez_process(
+    exe: &Path,
+    script_path: &Path,
+    working_dir: &Path,
+) -> Result<SidecarResult, String> {
+    // Рабочий каталог — изолированный каталог запуска: относительные пути
+    // в коде игрока (файлы трека «Базы данных») не засоряют каталог приложения
+    // и удаляются вместе с ним после выполнения.
     let child = TokioCommand::new(exe)
         .arg("--script")
         .arg(script_path)
+        .current_dir(working_dir)
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .kill_on_drop(true)
@@ -132,7 +140,7 @@ async fn run_chez_sidecar(app: tauri::AppHandle, source: String) -> Result<Sidec
     std::fs::write(&script_path, &script)
         .map_err(|err| format!("Не удалось записать программу во временный файл: {err}"))?;
 
-    let result = run_chez_process(&exe, &script_path).await;
+    let result = run_chez_process(&exe, &script_path, dir.path()).await;
     let _ = dir.close();
     result
 }
@@ -317,8 +325,9 @@ mod tests {
             .suffix(".sps")
             .tempfile()
             .expect("tempfile");
+        let work = tempfile::tempdir().expect("workdir");
         std::fs::write(tmp.path(), "(display (* 6 7)) (newline)").expect("write");
-        let result = run_chez_process(&exe, tmp.path())
+        let result = run_chez_process(&exe, tmp.path(), work.path())
             .await
             .expect("run sidecar");
         assert_eq!(result.output.trim(), "42");
@@ -336,8 +345,9 @@ mod tests {
             .suffix(".sps")
             .tempfile()
             .expect("tempfile");
+        let work = tempfile::tempdir().expect("workdir");
         std::fs::write(tmp.path(), "(car 1)").expect("write");
-        let result = run_chez_process(&exe, tmp.path())
+        let result = run_chez_process(&exe, tmp.path(), work.path())
             .await
             .expect("run sidecar");
         assert_eq!(result.output, "");
@@ -355,10 +365,34 @@ mod tests {
             .suffix(".sps")
             .tempfile()
             .expect("tempfile");
+        let work = tempfile::tempdir().expect("workdir");
         std::fs::write(tmp.path(), "(let loop () (loop))").expect("write");
-        let result = run_chez_process(&exe, tmp.path()).await;
+        let result = run_chez_process(&exe, tmp.path(), work.path()).await;
         assert!(result.is_err());
         assert!(result.unwrap_err().contains("20 секунд"));
+    }
+
+    #[tokio::test]
+    async fn writes_relative_files_into_working_dir() {
+        let Some(exe) = chez_exe() else {
+            eprintln!("sidecar Chez не найден — пропускаем e2e-проверку");
+            return;
+        };
+        let tmp = tempfile::Builder::new()
+            .prefix("zchmer_test_")
+            .suffix(".sps")
+            .tempfile()
+            .expect("tempfile");
+        let work = tempfile::tempdir().expect("workdir");
+        std::fs::write(
+            tmp.path(),
+            "(call-with-output-file \"db.sps\" (lambda (p) (display \"data\" p)))",
+        )
+        .expect("write");
+        run_chez_process(&exe, tmp.path(), work.path())
+            .await
+            .expect("run sidecar");
+        assert!(work.path().join("db.sps").is_file());
     }
 
     #[test]
